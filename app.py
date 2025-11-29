@@ -394,6 +394,13 @@ CHATBOT_HTML = """
     hospitality / hotel management paths and colleges in Hyderabad. At the end it will
     ask you to connect with a human mentor for final decisions.
   </p>
+  <!-- Reset button for new student -->
+  <form method="GET" action="/chatbot" class="mb-3">
+    <input type="hidden" name="reset" value="1">
+    <button class="px-3 py-1 rounded-full border border-slate-600 text-[11px] hover:bg-slate-800">
+      🔄 Start new student chat
+    </button>
+  </form>
 
   <div class="bg-slate-900/80 border border-slate-700 rounded-2xl p-4 h-[420px] overflow-y-auto mb-4">
     {% if history %}
@@ -498,7 +505,13 @@ def login():
 
         if user:
             session["user"] = user.name
+
+    # reset AI state for this logged-in user
+            session["ai_history"] = []
+            session["ai_used"] = False
+
             return redirect("/")  # go to HOME after login
+
         else:
             return render_page(
                 "<p class='text-red-400 text-sm mb-3'>Invalid email or password.</p>" + LOGIN_FORM,
@@ -725,6 +738,12 @@ def jobs():
 # -------------------- AI CAREER BOT --------------------
 @app.route("/chatbot", methods=["GET", "POST"])
 def chatbot():
+    # if reset requested (new student), clear history
+    if request.args.get("reset") == "1":
+        session["ai_history"] = []
+        # do NOT reset ai_used here; we still want home to know AI was used once
+        return redirect("/chatbot")
+
     # ---- normalize old history (tuples) into dicts ----
     raw_history = session.get("ai_history", [])
     history = []
