@@ -84,6 +84,8 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+# run once on import (works locally + on Render)
 init_db()
 
 # ======================= BASE LAYOUT =======================
@@ -144,8 +146,7 @@ BASE_HTML = """
 def render_page(content_html, title="CareerInn"):
     return render_template_string(BASE_HTML, content=content_html, title=title)
 
-
-# ======================= HOME (CLEAN V2) =======================
+# ======================= HOME =======================
 @app.route("/")
 def home():
     content = """
@@ -178,7 +179,7 @@ def home():
           </div>
 
           <p class="hero-footnote">
-            ₹299 per student.
+            ₹299 per student (demo prototype – ready to plug in real data later).
           </p>
         </div>
 
@@ -192,39 +193,51 @@ def home():
             <span class="text-xs text-slate-300 mb-2">per student / year</span>
           </div>
           <p class="text-[12px] text-slate-300">
-            Students can explore hospitality careers at one place.
+            Students can explore hospitality careers in one simple space.
           </p>
           <ul class="text-[12px] text-slate-200 space-y-1.5 mt-3">
             <li>• College explorer along with courses</li>
             <li>• Mentor connect flow with request form</li>
-            <li>• Job &amp; internship apply form</li>
+            <li>• Job &amp; internship apply form (demo only)</li>
           </ul>
         </div>
       </section>
 
-      <!-- 3 FEATURE CARDS -->
+      <!-- 5 FEATURE CARDS -->
       <section class="space-y-4">
         <h3 class="text-sm font-semibold text-slate-200">Core spaces inside CareerInn:</h3>
-        <div class="grid md:grid-cols-3 gap-4">
+        <div class="grid md:grid-cols-5 gap-4">
+
           <a href="/courses" class="feature-card">
-            🎓 Courses &amp; Colleges
-            <p class="sub">Browse hotel management colleges.</p>
+            📘 Courses
+            <p class="sub">Explore demo hospitality courses.</p>
           </a>
+
+          <a href="/courses" class="feature-card">
+            🏫 Colleges
+            <p class="sub">Browse demo hotel management colleges.</p>
+          </a>
+
           <a href="/mentorship" class="feature-card">
-            🧑‍🏫 Mentors
-            <p class="sub">View mentors &amp; try the booking request.</p>
+            🧑‍🏫 Mentorship
+            <p class="sub">Connect with mentors (request flow demo).</p>
           </a>
+
           <a href="/jobs" class="feature-card">
-            💼 Jobs &amp; Internships
-            <p class="sub">Open roles &amp; go through the apply form.</p>
+            💼 Jobs
+            <p class="sub">See sample job openings.</p>
           </a>
+
+          <a href="/jobs" class="feature-card">
+            📋 Internships
+            <p class="sub">View internship-style roles.</p>
+          </a>
+
         </div>
       </section>
     </div>
     """
     return render_page(content, "CareerInn | Home")
-
-
 
 # ======================= AUTH (SIGNUP / LOGIN) =======================
 SIGNUP_FORM = """
@@ -276,7 +289,6 @@ def signup():
 
     return render_page(SIGNUP_FORM, "Signup")
 
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -300,12 +312,10 @@ def login():
 
     return render_page(LOGIN_FORM, "Login")
 
-
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/")
-
 
 # ======================= DASHBOARD =======================
 @app.route("/dashboard")
@@ -328,7 +338,6 @@ def dashboard():
     </div>
     """
     return render_page(content, "Dashboard")
-
 
 # ======================= COURSES =======================
 @app.route("/courses")
@@ -368,7 +377,6 @@ def courses():
     """
     return render_page(content, "Courses & Colleges")
 
-
 # ======================= MENTORSHIP =======================
 @app.route("/mentorship")
 def mentorship():
@@ -399,7 +407,6 @@ def mentorship():
     </div>
     """
     return render_page(content, "Mentorship")
-
 
 @app.route("/book-mentor/<int:mentor_id>", methods=["GET", "POST"])
 def book_mentor(mentor_id):
@@ -436,7 +443,6 @@ def book_mentor(mentor_id):
     """
     return render_page(content, "Book Mentor")
 
-
 # ======================= JOBS =======================
 @app.route("/jobs")
 def jobs():
@@ -468,7 +474,6 @@ def jobs():
     </div>
     """
     return render_page(content, "Jobs & Internships")
-
 
 @app.route("/apply-job/<int:job_id>", methods=["GET", "POST"])
 def apply_job(job_id):
@@ -506,7 +511,6 @@ def apply_job(job_id):
     """
     return render_page(content, "Apply Job")
 
-
 # ======================= SUPPORT =======================
 @app.route("/support")
 def support():
@@ -520,12 +524,6 @@ def support():
     """
     return render_page(content, "Support")
 
-
-# ======================= MAIN =======================
-# ------------------- MAIN -------------------
-# ======================= MAIN =======================
 # ======================= MAIN =======================
 if __name__ == "__main__":
     app.run(debug=True)
-
-
