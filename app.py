@@ -84,6 +84,7 @@ def init_db():
 
     conn.commit()
     conn.close()
+init_db()
 
 # ======================= BASE LAYOUT =======================
 BASE_HTML = """
@@ -523,14 +524,8 @@ def support():
 # ======================= MAIN =======================
 # ------------------- MAIN -------------------
 # ======================= MAIN =======================
-
-from flask import Flask
-
-@app.before_first_request
-def setup_db():
-    init_db()       # Ensures DB & tables exist on Render + Local
-
+# ======================= MAIN =======================
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(debug=True)
 
 
