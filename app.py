@@ -48,42 +48,80 @@ def init_db():
         )
     """)
 
-    # seed placeholder data
-    c.execute("SELECT COUNT(*) FROM colleges")
-    if c.fetchone()[0] == 0:
-        c.executemany(
-            "INSERT INTO colleges(name,location,fees,placements) VALUES(?,?,?,?)",
-            [
-                ("College ... A", "Location ...", 299000, "Placement ..."),
-                ("College ... B", "Location ...", 310000, "Placement ..."),
-                ("College ... C", "Location ...", 280000, "Placement ...")
-            ]
-        )
+    # ---------- REAL HYDERABAD HM COLLEGES (approx yearly fees) ----------
+    colleges_seed = [
+        ("IHM Hyderabad (IHMH)", "DD Colony, Hyderabad", 120000,
+         "Govt. hotel management institute, national-level placements"),
 
+        ("NITHM Hyderabad", "Gachibowli, Hyderabad", 130000,
+         "Tourism & hospitality institute with campus placements"),
+
+        ("IIHM Hyderabad", "Somajiguda, Hyderabad", 150000,
+         "International hotel management network, industry tie-ups"),
+
+        ("Regency College of Culinary Arts & Hotel Management", "Himayatnagar, Hyderabad", 120000,
+         "Strong culinary focus, good city hotel placements"),
+
+        ("IHM Shri Shakti", "Kompally, Hyderabad", 121000,
+         "Affiliated to NCHM, hospitality & hotel admin"),
+
+        ("Chennais Amirta IHM – Hyderabad", "Khairatabad, Hyderabad", 100000,
+         "Diploma, UG and PG hotel management with placement assistance"),
+
+        ("Westin College of Hotel Management", "Nizampet, Hyderabad", 100000,
+         "Affiliated to Osmania University, offers national & international placements"),
+
+        ("Malla Reddy University – Hotel Management", "Maisammaguda, Hyderabad", 110000,
+         "University campus with hotel management specialisations"),
+
+        ("SIITAM Hyderabad", "Tarnaka, Hyderabad", 103000,
+         "Hotel management programmes with industry exposure"),
+
+        ("Zest College of Hotel Management", "Hyderabad", 65000,
+         "Budget-focused hotel management college"),
+
+        ("Roots Collegium – Hotel Management", "Somajiguda, Hyderabad", 110000,
+         "Hospitality, culinary & hotel management"),
+
+        ("Aptech Aviation & Hospitality – Hyderabad", "Ameerpet, Hyderabad", 90000,
+         "Aviation + hospitality courses with placement support")
+    ]
+
+    # Always refresh colleges list with the latest seed
+    c.execute("DELETE FROM colleges")
+    c.executemany(
+        "INSERT INTO colleges(name,location,fees,placements) VALUES(?,?,?,?)",
+        colleges_seed
+    )
+
+    # ----- keep your earlier demo seed for mentors & jobs -----
     c.execute("SELECT COUNT(*) FROM mentors")
     if c.fetchone()[0] == 0:
+        mentors_seed = [
+            ("Mentor ... A", "Experience ...", "Speciality ..."),
+            ("Mentor ... B", "Experience ...", "Speciality ..."),
+            ("Mentor ... C", "Experience ...", "Speciality ...")
+        ]
         c.executemany(
             "INSERT INTO mentors(name,experience,speciality) VALUES(?,?,?)",
-            [
-                ("Mentor ... A", "Experience ...", "Speciality ..."),
-                ("Mentor ... B", "Experience ...", "Speciality ..."),
-                ("Mentor ... C", "Experience ...", "Speciality ...")
-            ]
+            mentors_seed
         )
 
     c.execute("SELECT COUNT(*) FROM jobs")
     if c.fetchone()[0] == 0:
+        jobs_seed = [
+            ("Job ... A", "Company ...", "Location ...", "Salary ..."),
+            ("Job ... B", "Company ...", "Location ...", "Salary ..."),
+            ("Job ... C", "Company ...", "Location ...", "Salary ...")
+        ]
         c.executemany(
             "INSERT INTO jobs(title,company,location,salary) VALUES(?,?,?,?)",
-            [
-                ("Job ... A", "Company ...", "Location ...", "Salary ..."),
-                ("Job ... B", "Company ...", "Location ...", "Salary ..."),
-                ("Job ... C", "Company ...", "Location ...", "Salary ...")
-            ]
+            jobs_seed
         )
 
     conn.commit()
     conn.close()
+
 
 # run once on import (works locally + on Render)
 init_db()
@@ -341,13 +379,33 @@ def dashboard():
 @app.route("/courses")
 def courses():
     q = request.args.get("q", "").strip()
+    min_fee = request.args.get("min_fee", "").strip()
+    max_fee = request.args.get("max_fee", "").strip()
+
     conn = sqlite3.connect(DB)
     c = conn.cursor()
+
+    query = "SELECT * FROM colleges WHERE 1=1"
+    params = []
+
     if q:
         like = f"%{q}%"
-        c.execute("SELECT * FROM colleges WHERE name LIKE ? OR location LIKE ?", (like, like))
-    else:
-        c.execute("SELECT * FROM colleges")
+        query += " AND (name LIKE ? OR location LIKE ?)"
+        params.extend([like, like])
+
+    # budget filter
+    try:
+        if min_fee:
+            query += " AND fees >= ?"
+            params.append(int(min_fee))
+        if max_fee:
+            query += " AND fees <= ?"
+            params.append(int(max_fee))
+    except ValueError:
+        # if user types non-numeric, just ignore fee filters
+        pass
+
+    c.execute(query, params)
     data = c.fetchall()
     conn.close()
 
@@ -357,23 +415,35 @@ def courses():
         <tr>
           <td>{col[1]}</td>
           <td>{col[2]}</td>
-          <td>₹{col[3]}</td>
+          <td>₹{col[3]:,}</td>
           <td>{col[4]}</td>
         </tr>
         """
 
+    if not rows:
+        rows = "<tr><td colspan='4'>No colleges match this search / budget yet.</td></tr>"
+
     content = f"""
-    <h2 class="text-3xl font-bold mb-4">College &amp; Course Explorer</h2>
-    <form method="GET" class="mb-3 flex gap-2 items-center">
-      <input name="q" value="{q}" placeholder="Search by name or location..." class="search-bar">
-      <button class="px-3 py-2 bg-indigo-600 rounded text-sm">Search</button>
+    <h2 class="text-3xl font-bold mb-4">Hyderabad Hotel Management Colleges</h2>
+
+    <form method="GET" class="mb-3 grid md:grid-cols-4 gap-2 items-center">
+      <input name="q" value="{q}" placeholder="Search by college or area..." class="search-bar">
+      <input name="min_fee" value="{min_fee}" type="number" placeholder="Min budget (₹)" class="search-bar">
+      <input name="max_fee" value="{max_fee}" type="number" placeholder="Max budget (₹)" class="search-bar">
+      <button class="px-3 py-2 bg-indigo-600 rounded text-sm">Filter</button>
     </form>
-    <table class="table">
-      <tr><th>Name</th><th>Location</th><th>Fees</th><th>Placements</th></tr>
+
+    <p class="text-[11px] text-slate-400 mt-1">
+      Fees shown are approximate yearly tuition for Hyderabad hotel management programmes. Students should confirm with the college website before applying.
+    </p>
+
+    <table class="table mt-2">
+      <tr><th>Name</th><th>Location</th><th>Approx. Annual Fees</th><th>Placements / Notes</th></tr>
       {rows}
     </table>
     """
     return render_page(content, "Courses & Colleges")
+
 
 # ======================= MENTORSHIP =======================
 @app.route("/mentorship")
