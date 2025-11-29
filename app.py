@@ -522,12 +522,15 @@ def support():
 
 # ======================= MAIN =======================
 # ------------------- MAIN -------------------
+# ======================= MAIN =======================
+
+from flask import Flask
+
 @app.before_first_request
-def setup():
-    # This runs once when the first request comes in
-    init_db()
+def setup_db():
+    init_db()       # Ensures DB & tables exist on Render + Local
 
 if __name__ == "__main__":
-    # Local run
-    app.run(debug=True)
+    app.run(debug=True, host="0.0.0.0", port=5000)
+
 
