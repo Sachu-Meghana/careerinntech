@@ -1,4 +1,5 @@
 import os
+from openai import OpenAI
 import html
 
 from flask import (
@@ -24,6 +25,8 @@ from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session
 # -------------------- FLASK SETUP --------------------
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "careerinn_secure_key")
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
 
 # -------------------- DB SETUP (POSTGRES / SQLITE) --------------------
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///careerinn.db")
@@ -244,6 +247,8 @@ BASE_HTML = """
     <div class="hidden md:flex items-center gap-6 text-sm">
       <a href="/" class="hover:text-indigo-400">Home</a>
       <a href="/courses" class="hover:text-indigo-400">Courses</a>
+      <a href="/chatbot" class="hover:text-indigo-400">AI Career Bot</a>
+
       <a href="/mentorship" class="hover:text-indigo-400">Mentorship</a>
       <a href="/jobs" class="hover:text-indigo-400">Jobs</a>
       <a href="/ai-bot" class="hover:text-indigo-400">AI Career Bot</a>
@@ -392,6 +397,58 @@ def home():
     </div>
     """
     return render_page(content, "CareerInn | Home")
+
+
+
+CHATBOT_HTML = """
+<div class="max-w-3xl mx-auto space-y-6">
+  <h1 class="text-3xl font-bold mb-2">CareerInn AI Mentor</h1>
+  <p class="text-sm text-slate-300 mb-4">
+    This AI bot asks about your marks, interests, budget and goals, then suggests
+    hospitality / hotel management paths and colleges in Hyderabad. At the end it will
+    ask you to connect with a human mentor for final decisions.
+  </p>
+
+  <div class="bg-slate-900/80 border border-slate-700 rounded-2xl p-4 h-[420px] overflow-y-auto mb-4">
+    {% if history %}
+      {% for m in history %}
+        <div class="mb-3">
+          {% if m.role == 'user' %}
+            <div class="text-xs text-slate-400 mb-0.5">You</div>
+            <div class="inline-block px-3 py-2 rounded-2xl bg-indigo-600 text-xs md:text-sm max-w-[90%]">
+              {{ m.content }}
+            </div>
+          {% else %}
+            <div class="text-xs text-slate-400 mb-0.5">CareerInn AI</div>
+            <div class="inline-block px-3 py-2 rounded-2xl bg-slate-800 text-xs md:text-sm max-w-[90%]">
+              {{ m.content }}
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="text-sm text-slate-400">
+        👋 Hi! I’m CareerInn AI. Tell me your name and your latest class (10th / 12th / degree),
+        and approximate marks. I’ll ask a few quick questions and suggest a path+college for you.
+      </p>
+    {% endif %}
+  </div>
+
+  <form method="POST" class="flex gap-2">
+    <input
+      name="message"
+      autocomplete="off"
+      placeholder="Type your message here..."
+      class="flex-1 input-box"
+      required
+    >
+    <button class="px-4 py-2 rounded-full bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold">
+      Send
+    </button>
+  </form>
+</div>
+"""
+
 
 
 # -------------------- AUTH (SIGNUP / LOGIN) --------------------
@@ -686,96 +743,67 @@ def jobs():
 
 
 # -------------------- AI CAREER BOT (OpenAI gpt-4.1-mini) --------------------
-@app.route("/ai-bot", methods=["GET", "POST"])
-def ai_bot():
-    history = session.get("ai_history", [])
+@app.route("/chatbot", methods=["GET", "POST"])
+def chatbot():
+    # Simple session-based chat history
+    if "ai_history" not in session:
+        session["ai_history"] = []
+
+    history = session["ai_history"]
 
     if request.method == "POST":
-        user_msg = request.form.get("message", "").strip()
-        if user_msg:
-            session["ai_used"] = True
-            history.append({"role": "user", "content": user_msg})
+        user_message = request.form.get("message", "").strip()
+        if user_message:
+            history.append({"role": "user", "content": user_message})
 
-            messages = [{"role": "system", "content": AI_SYSTEM_PROMPT}]
-            for h in history[-10:]:
-                messages.append({"role": h["role"], "content": h["content"]})
+            # Build messages for the model
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are CareerInn AI, a friendly career mentor specialized in "
+                        "hotel management and hospitality careers in India, especially Hyderabad. "
+                        "Your job:\n"
+                        "1) Ask the student about name, current class (10th/12th/degree), marks %, "
+                        "preferred city (focus Hyderabad), family budget for fees per year, and interest areas "
+                        "(front office, culinary, F&B, bakery, cruise, etc.).\n"
+                        "2) Based on answers, explain recommended path (diploma / degree / PG diploma), "
+                        "approximate fee ranges, what kind of jobs they can get and example package ranges.\n"
+                        "3) Suggest a few example college profiles in Hyderabad as placeholders like "
+                        "'College A (Hyderabad, fees range ...)', 'College B ...' without creating fake claims.\n"
+                        "4) Always finish by saying: 'For a final decision and real college shortlisting, "
+                        "please connect with a human mentor from the Mentorship section in CareerInn.'\n"
+                        "Keep answers short, in simple bullet points when possible."
+                    ),
+                }
+            ]
+
+            for m in history:
+                messages.append({"role": m["role"], "content": m["content"]})
 
             try:
-                resp = client.chat.completions.create(
-                    model="gpt-4.1-mini",
+                # Using Chat Completions with a cheap fast model
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
                     messages=messages,
                     temperature=0.6,
                 )
-                bot_text = resp.choices[0].message.content
-            except Exception:
-                bot_text = (
-                    "Sorry, I'm having trouble replying right now. "
-                    "Please try again in a minute, or directly connect with a CareerInn mentor."
+                bot_reply = response.choices[0].message.content
+            except Exception as e:
+                bot_reply = (
+                    "Sorry, I couldn't reach the AI service right now. "
+                    f"Technical info: {e}"
                 )
 
-            history.append({"role": "assistant", "content": bot_text})
+            history.append({"role": "assistant", "content": bot_reply})
             session["ai_history"] = history
 
-    if not history:
-        bubbles = """
-        <div class='text-xs text-slate-400'>
-          Start by telling me, for example: <br>
-          <span class='text-slate-200'>
-            “My name is Arjun, I finished 12th with 80% (MPC), my budget is 2–3 lakhs per year and I like culinary.”
-          </span>
-        </div>
-        """
-    else:
-        bubbles = ""
-        for h in history:
-            safe = html.escape(h["content"]).replace("\n", "<br>")
-            if h["role"] == "user":
-                bubbles += f"""
-                <div class="flex justify-end mb-2">
-                  <div class="max-w-xs md:max-w-md bg-indigo-600 text-white text-xs md:text-sm px-3 py-2 rounded-2xl rounded-br-sm">
-                    {safe}
-                  </div>
-                </div>
-                """
-            else:
-                bubbles += f"""
-                <div class="flex justify-start mb-2">
-                  <div class="max-w-xs md:max-w-md bg-slate-800 text-slate-100 text-xs md:text-sm px-3 py-2 rounded-2xl rounded-bl-sm">
-                    {safe}
-                  </div>
-                </div>
-                """
+    # Render the page with history
+    return render_page(
+        render_template_string(CHATBOT_HTML, history=history),
+        "CareerInn AI Mentor",
+    )
 
-    content = f"""
-    <div class="max-w-4xl mx-auto space-y-4">
-      <h2 class="text-3xl font-bold mb-1">AI Career Guide for Hospitality</h2>
-      <p class="text-sm text-slate-300 mb-4">
-        I will ask a few simple questions about your marks, budget and interests,
-        then suggest a hotel management path and colleges. At the end I'll ask you
-        to please connect with a human mentor on CareerInn.
-      </p>
-
-      <div class="bg-[#050816] border border-slate-800 rounded-2xl p-4 md:p-5 h-[430px] flex flex-col">
-        <div class="flex-1 overflow-y-auto pr-1 custom-scroll">
-          {bubbles}
-        </div>
-
-        <form method="POST" class="mt-3 flex gap-2">
-          <input name="message" autocomplete="off"
-                 placeholder="Type your answer or question here..."
-                 class="flex-1 search-bar">
-          <button class="px-4 py-2 bg-indigo-600 rounded-full text-xs md:text-sm">
-            Send
-          </button>
-        </form>
-      </div>
-
-      <p class="text-[11px] text-slate-400">
-        Prototype only – this AI uses general guidance. Final decisions should be taken after talking to a CareerInn mentor.
-      </p>
-    </div>
-    """
-    return render_page(content, "AI Career Bot")
 
 
 # -------------------- SUPPORT --------------------
