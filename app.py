@@ -6,7 +6,7 @@ from flask import (
     session,
     render_template_string,
 )
-from openai import OpenAI
+from groq import Groq
 from sqlalchemy import (
     create_engine,
     Column,
@@ -21,8 +21,9 @@ from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "careerinn_secure_key")
 
-# OpenAI client (uses OPENAI_API_KEY env var on Render)
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# Groq client (uses GROQ_API_KEY env var on Render)
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
 
 # -------------------- DB SETUP (POSTGRES / SQLITE) --------------------
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///careerinn.db")
@@ -769,7 +770,7 @@ def chatbot():
 
             try:
                 response = client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model="llama-3.1-8b-instant",
                     messages=messages,
                     temperature=0.6,
                 )
