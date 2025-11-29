@@ -1,7 +1,4 @@
 import os
-from openai import OpenAI
-import html
-
 from flask import (
     Flask,
     request,
@@ -9,9 +6,7 @@ from flask import (
     session,
     render_template_string,
 )
-
 from openai import OpenAI
-
 from sqlalchemy import (
     create_engine,
     Column,
@@ -22,11 +17,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session
 
-# -------------------- FLASK SETUP --------------------
+# -------------------- FLASK + OPENAI SETUP --------------------
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "careerinn_secure_key")
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
+# OpenAI client (uses OPENAI_API_KEY env var on Render)
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 # -------------------- DB SETUP (POSTGRES / SQLITE) --------------------
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///careerinn.db")
@@ -45,7 +41,6 @@ Base = declarative_base()
 
 class User(Base):
     __tablename__ = "users"
-
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
     email = Column(String(255), unique=True, nullable=False)
@@ -54,7 +49,6 @@ class User(Base):
 
 class College(Base):
     __tablename__ = "colleges"
-
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
     location = Column(String(255), nullable=False)
@@ -65,7 +59,6 @@ class College(Base):
 
 class Mentor(Base):
     __tablename__ = "mentors"
-
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
     experience = Column(Text, nullable=False)
@@ -74,7 +67,6 @@ class Mentor(Base):
 
 class Job(Base):
     __tablename__ = "jobs"
-
     id = Column(Integer, primary_key=True)
     title = Column(Text, nullable=False)
     company = Column(String(255), nullable=False)
@@ -90,7 +82,7 @@ def init_db():
     db = get_db()
     Base.metadata.create_all(bind=engine)
 
-    # seed colleges if empty
+    # -------- seed colleges if empty --------
     if db.query(College).count() == 0:
         colleges_seed = [
             ("IHM Hyderabad (IHMH)", "DD Colony, Hyderabad", 320000,
@@ -133,7 +125,7 @@ def init_db():
                 rating=rating
             ))
 
-    # seed mentors if empty (still demo)
+    # -------- seed mentors if empty (demo) --------
     if db.query(Mentor).count() == 0:
         mentors_seed = [
             ("Mentor ... A", "Industry experience ...", "Hotel Ops / Front Office"),
@@ -143,7 +135,7 @@ def init_db():
         for n, exp, spec in mentors_seed:
             db.add(Mentor(name=n, experience=exp, speciality=spec))
 
-    # seed jobs as placements snapshot
+    # -------- seed jobs as placements snapshot --------
     if db.query(Job).count() == 0:
         jobs_seed = [
             ("IHM Hyderabad – Management Trainee (Hotel Ops)",
@@ -180,9 +172,7 @@ def shutdown_session(exception=None):
 # initialize db on startup
 init_db()
 
-# -------------------- OPENAI SETUP --------------------
-client = OpenAI()  # uses OPENAI_API_KEY from environment
-
+# -------------------- AI SYSTEM PROMPT --------------------
 AI_SYSTEM_PROMPT = """
 You are CareerInn's AI career guide for hospitality and hotel management in Hyderabad.
 
@@ -217,7 +207,6 @@ Style:
 - Do NOT talk about being an AI model.
 """
 
-
 # -------------------- BASE LAYOUT --------------------
 BASE_HTML = """
 <!DOCTYPE html>
@@ -248,10 +237,8 @@ BASE_HTML = """
       <a href="/" class="hover:text-indigo-400">Home</a>
       <a href="/courses" class="hover:text-indigo-400">Courses</a>
       <a href="/chatbot" class="hover:text-indigo-400">AI Career Bot</a>
-
       <a href="/mentorship" class="hover:text-indigo-400">Mentorship</a>
       <a href="/jobs" class="hover:text-indigo-400">Jobs</a>
-      <a href="/ai-bot" class="hover:text-indigo-400">AI Career Bot</a>
       <a href="/support" class="hover:text-indigo-400">Support</a>
 
       {% if session.get('user') %}
@@ -280,7 +267,6 @@ BASE_HTML = """
 def render_page(content_html, title="CareerInn"):
     return render_template_string(BASE_HTML, content=content_html, title=title)
 
-
 # -------------------- HOME (dynamic CTA) --------------------
 @app.route("/")
 def home():
@@ -291,7 +277,7 @@ def home():
           <div class="flex flex-wrap items-center gap-3 mt-3">
             <a href="/signup" class="primary-cta">Create free account</a>
             <a href="/login" class="ghost-cta">Sign in</a>
-            <a href="/ai-bot" class="px-4 py-2 rounded-full border border-emerald-400/70 text-xs md:text-sm hover:bg-emerald-500/10">
+            <a href="/chatbot" class="px-4 py-2 rounded-full border border-emerald-400/70 text-xs md:text-sm hover:bg-emerald-500/10">
               🤖 Try free AI career chat
             </a>
           </div>
@@ -299,14 +285,14 @@ def home():
         """
     else:
         cta_html = """
-          <div class="flex flex-wrap items-center gap-4 mt-3">
+          <div class="flex flex-wrap	items-center gap-4 mt-3">
             <a href="/signup" class="primary-cta">
               🚀 Get started – ₹299 / year
             </a>
             <a href="/login" class="ghost-cta">
               Already have an account?
             </a>
-            <a href="/ai-bot" class="px-4 py-2 rounded-full border border-emerald-400/70 text-xs md:text-sm hover:bg-emerald-500/10">
+            <a href="/chatbot" class="px-4 py-2 rounded-full border border-emerald-400/70 text-xs md:text-sm hover:bg-emerald-500/10">
               🤖 Continue with AI guidance
             </a>
           </div>
@@ -388,7 +374,7 @@ def home():
             <p class="sub">Avg packages &amp; recruiters snapshot.</p>
           </a>
 
-          <a href="/ai-bot" class="feature-card">
+          <a href="/chatbot" class="feature-card">
             🤖 AI Career Bot
             <p class="sub">Chat to get a suggested path.</p>
           </a>
@@ -399,7 +385,7 @@ def home():
     return render_page(content, "CareerInn | Home")
 
 
-
+# -------------------- CHATBOT TEMPLATE --------------------
 CHATBOT_HTML = """
 <div class="max-w-3xl mx-auto space-y-6">
   <h1 class="text-3xl font-bold mb-2">CareerInn AI Mentor</h1>
@@ -448,8 +434,6 @@ CHATBOT_HTML = """
   </form>
 </div>
 """
-
-
 
 # -------------------- AUTH (SIGNUP / LOGIN) --------------------
 SIGNUP_FORM = """
@@ -529,7 +513,6 @@ def logout():
     session.clear()
     return redirect("/")
 
-
 # -------------------- DASHBOARD --------------------
 @app.route("/dashboard")
 def dashboard():
@@ -551,7 +534,6 @@ def dashboard():
     </div>
     """
     return render_page(content, "Dashboard")
-
 
 # -------------------- COURSES (budget + rating filters) --------------------
 @app.route("/courses")
@@ -646,7 +628,6 @@ def courses():
     """
     return render_page(content, "Courses & Colleges")
 
-
 # -------------------- MENTORSHIP --------------------
 @app.route("/mentorship")
 def mentorship():
@@ -710,7 +691,6 @@ def book_mentor(mentor_id):
     """
     return render_page(content, "Book Mentor")
 
-
 # -------------------- JOBS = PLACEMENTS SNAPSHOT --------------------
 @app.route("/jobs")
 def jobs():
@@ -742,7 +722,7 @@ def jobs():
     return render_page(content, "Jobs & Placements")
 
 
-# -------------------- AI CAREER BOT (OpenAI gpt-4.1-mini) --------------------
+# -------------------- AI CAREER BOT --------------------
 @app.route("/chatbot", methods=["GET", "POST"])
 def chatbot():
     # Simple session-based chat history
@@ -756,33 +736,11 @@ def chatbot():
         if user_message:
             history.append({"role": "user", "content": user_message})
 
-            # Build messages for the model
-            messages = [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are CareerInn AI, a friendly career mentor specialized in "
-                        "hotel management and hospitality careers in India, especially Hyderabad. "
-                        "Your job:\n"
-                        "1) Ask the student about name, current class (10th/12th/degree), marks %, "
-                        "preferred city (focus Hyderabad), family budget for fees per year, and interest areas "
-                        "(front office, culinary, F&B, bakery, cruise, etc.).\n"
-                        "2) Based on answers, explain recommended path (diploma / degree / PG diploma), "
-                        "approximate fee ranges, what kind of jobs they can get and example package ranges.\n"
-                        "3) Suggest a few example college profiles in Hyderabad as placeholders like "
-                        "'College A (Hyderabad, fees range ...)', 'College B ...' without creating fake claims.\n"
-                        "4) Always finish by saying: 'For a final decision and real college shortlisting, "
-                        "please connect with a human mentor from the Mentorship section in CareerInn.'\n"
-                        "Keep answers short, in simple bullet points when possible."
-                    ),
-                }
-            ]
-
+            messages = [{"role": "system", "content": AI_SYSTEM_PROMPT}]
             for m in history:
                 messages.append({"role": m["role"], "content": m["content"]})
 
             try:
-                # Using Chat Completions with a cheap fast model
                 response = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=messages,
@@ -797,14 +755,10 @@ def chatbot():
 
             history.append({"role": "assistant", "content": bot_reply})
             session["ai_history"] = history
+            session["ai_used"] = True  # mark that AI has been used once
 
-    # Render the page with history
-    return render_page(
-        render_template_string(CHATBOT_HTML, history=history),
-        "CareerInn AI Mentor",
-    )
-
-
+    html = render_template_string(CHATBOT_HTML, history=history)
+    return render_page(html, "CareerInn AI Mentor")
 
 # -------------------- SUPPORT --------------------
 @app.route("/support")
@@ -818,7 +772,6 @@ def support():
     </div>
     """
     return render_page(content, "Support")
-
 
 # -------------------- MAIN --------------------
 if __name__ == "__main__":
