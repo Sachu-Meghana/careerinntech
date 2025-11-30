@@ -95,6 +95,25 @@ class AiUsage(Base):
     ai_used = Column(Integer, nullable=False, default=0)
 
 
+class UserProfile(Base):
+    """
+    Simple user dashboard profile:
+    - skills_text: what they know
+    - target_roles: what they want
+    - self_rating: 0–5 rating
+    - resume_link: Drive / resume URL
+    - notes: extra notes
+    """
+    __tablename__ = "user_profiles"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False, unique=True)
+    skills_text = Column(Text, nullable=True)
+    target_roles = Column(Text, nullable=True)
+    self_rating = Column(Integer, nullable=False, default=0)
+    resume_link = Column(String(500), nullable=True)
+    notes = Column(Text, nullable=True)
+
+
 def get_db():
     return SessionLocal()
 
@@ -268,9 +287,9 @@ BASE_HTML = """
           <a href="/support" class="hover:text-indigo-400">Support</a>
 
           {% if session.get('user') %}
-            <span class="px-3 py-1.5 text-[13px] text-slate-300 border border-slate-700 rounded-full">
+            <a href="/dashboard" class="px-3 py-1.5 text-[13px] text-slate-300 border border-slate-700 rounded-full hover:bg-slate-800">
               Hi, {{ session.get('user') }}
-            </span>
+            </a>
             <a href="/logout" class="px-4 py-1.5 rounded-full bg-rose-500 hover:bg-rose-600 text-xs font-semibold shadow shadow-rose-500/40">
               Logout
             </a>
@@ -555,7 +574,7 @@ def signup():
 
         db = get_db()
 
-        # ✅ block duplicate emails
+        # block duplicate emails
         existing = db.query(User).filter(User.email == email).first()
         if existing:
             db.close()
@@ -565,7 +584,7 @@ def signup():
                 "Signup"
             )
 
-        # ✅ store hashed password, NOT plain text
+        # store hashed password, NOT plain text
         hashed_password = generate_password_hash(
             password,
             method="pbkdf2:sha256",
@@ -582,7 +601,6 @@ def signup():
     return render_page(SIGNUP_FORM, "Signup")
 
 
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -590,22 +608,24 @@ def login():
         password = request.form.get("password", "").strip()
 
         db = get_db()
-        # 👉 only look up by email
         user = db.query(User).filter(User.email == email).first()
         db.close()
 
-        # ✅ check hashed password
-        if user and check_password_hash(user.password, password):
+        authenticated = False
+        if user:
+            # try hashed first
+            try:
+                authenticated = check_password_hash(user.password, password)
+            except ValueError:
+                # fallback if old plain-text passwords exist
+                authenticated = (user.password == password)
+
+        if authenticated:
             session["user"] = user.name
             session["user_id"] = user.id
+            session["ai_history"] = []  # reset chat history
+            return redirect("/dashboard")  # go to DASHBOARD after login
 
-            # reset AI state for this user
-            session["ai_history"] = []
-            session["ai_used"] = False
-
-            return redirect("/")  # go to HOME after login
-
-        # login failed
         return render_page(
             "<p class='text-red-400 text-sm mb-3'>Invalid email or password.</p>" + LOGIN_FORM,
             "Login"
@@ -614,32 +634,336 @@ def login():
     return render_page(LOGIN_FORM, "Login")
 
 
-
-
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/")
 
 
-# -------------------- DASHBOARD --------------------
-@app.route("/dashboard")
+# -------------------- USER DASHBOARD (PROFILE) --------------------
+@app.route("/dashboard", methods=["GET", "POST"])
 def dashboard():
-    if "user" not in session:
+    if "user_id" not in session:
         return redirect("/login")
 
+    user_id = session["user_id"]
+    user_name = session["user"]
+
+    # which tab?
+    tab = request.args.get("tab")
+    if request.method == "POST":
+        tab = request.form.get("tab", tab)
+    if not tab:
+        tab = "home"
+
+    db = get_db()
+    profile = db.query(UserProfile).filter_by(user_id=user_id).first()
+    if profile is None:
+        profile = UserProfile(
+            user_id=user_id,
+            skills_text="",
+            target_roles="",
+            self_rating=0,
+            resume_link="",
+            notes=""
+        )
+        db.add(profile)
+        db.commit()
+
+    # handle form saves
+    if request.method == "POST":
+        if tab == "skills":
+            profile.skills_text = request.form.get("skills_text", "").strip()
+            profile.target_roles = request.form.get("target_roles", "").strip()
+            rating_val = request.form.get("self_rating", "").strip()
+            try:
+                profile.self_rating = int(rating_val) if rating_val else 0
+            except ValueError:
+                profile.self_rating = 0
+            db.commit()
+            db.close()
+            return redirect("/dashboard?tab=skills")
+
+        if tab == "resume":
+            profile.resume_link = request.form.get("resume_link", "").strip()
+            profile.notes = request.form.get("notes", "").strip()
+            db.commit()
+            db.close()
+            return redirect("/dashboard?tab=resume")
+
+    skills_text = profile.skills_text or ""
+    target_roles = profile.target_roles or ""
+    self_rating = profile.self_rating or 0
+    resume_link = profile.resume_link or ""
+    notes = profile.notes or ""
+    db.close()
+
+    base_tab_cls = "px-4 py-2 rounded-full text-xs md:text-sm border border-slate-700 hover:bg-slate-800"
+    def cls(name):
+        return (
+            base_tab_cls + " bg-indigo-600 text-white border-indigo-500"
+            if tab == name
+            else base_tab_cls + " text-slate-300"
+        )
+
+    # panels
+    home_panel = f"""
+      <div class="space-y-4">
+        <h2 class="text-2xl md:text-3xl font-bold">Welcome back, {user_name} 👋</h2>
+        <p class="text-sm text-slate-300">
+          This is your personal hospitality dashboard. Track your skills, upload your resume link,
+          and see how ready you are for hotel &amp; hospitality careers.
+        </p>
+
+        <div class="grid md:grid-cols-3 gap-4 mt-4">
+          <div class="dash-box">
+            <p class="text-xs text-slate-400">Career readiness rating</p>
+            <p class="text-2xl font-bold mt-1">{self_rating}/5</p>
+          </div>
+          <div class="dash-box">
+            <p class="text-xs text-slate-400">Target roles set</p>
+            <p class="text-2xl font-bold mt-1">
+              {"Yes" if target_roles else "No"}
+            </p>
+          </div>
+          <div class="dash-box">
+            <p class="text-xs text-slate-400">Resume link added</p>
+            <p class="text-2xl font-bold mt-1">
+              {"Yes" if resume_link else "No"}
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-6 bg-slate-900/70 border border-slate-700 rounded-2xl p-4">
+          <h3 class="font-semibold mb-2">Quick tips</h3>
+          <ul class="text-xs md:text-sm text-slate-300 space-y-1.5">
+            <li>• Use the <b>Skills</b> tab to list your current skills and areas to improve.</li>
+            <li>• Paste your <b>Google Drive / PDF resume link</b> inside the <b>Resume</b> tab.</li>
+            <li>• Chat with the <b>AI Career Bot</b> once, then talk to mentors for final guidance.</li>
+          </ul>
+        </div>
+      </div>
+    """
+
+    mentors_panel = """
+      <div class="space-y-4">
+        <h2 class="text-2xl md:text-3xl font-bold">Mentor connections 🧑‍🏫</h2>
+        <p class="text-sm text-slate-300">
+          CareerInn mentors help you understand real hotel shifts, growth paths and how to build a strong CV.
+        </p>
+
+        <div class="grid md:grid-cols-2 gap-4 mt-4">
+          <div class="support-box">
+            <h3 class="font-semibold mb-2">How mentors help</h3>
+            <ul class="text-xs md:text-sm text-slate-200 space-y-1.5">
+              <li>• Reviewing your resume and skills.</li>
+              <li>• Suggesting best-fit colleges for your budget.</li>
+              <li>• Mock interview prep for hotel roles.</li>
+              <li>• Abroad / cruise and internship guidance.</li>
+            </ul>
+          </div>
+          <div class="support-box">
+            <h3 class="font-semibold mb-2">Next step</h3>
+            <p class="text-xs md:text-sm text-slate-200 mb-2">
+              Once your Skills and Resume tabs look ready, book a demo mentor slot from the Mentorship page.
+            </p>
+            <a href="/mentorship" class="inline-block mt-2 px-4 py-2 rounded-full bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold">
+              View mentors
+            </a>
+          </div>
+        </div>
+      </div>
+    """
+
+    skills_panel = f"""
+      <div class="space-y-4">
+        <h2 class="text-2xl md:text-3xl font-bold">Skills &amp; strengths ⭐</h2>
+        <p class="text-sm text-slate-300">
+          Be honest here. This helps mentors and yourself see where you stand for hospitality careers.
+        </p>
+
+        <form method="POST" class="space-y-4 mt-4">
+          <input type="hidden" name="tab" value="skills">
+
+          <div>
+            <label class="block text-xs text-slate-300 mb-1">Current skills (English, communication, cooking, customer service, etc.)</label>
+            <textarea name="skills_text" rows="4" class="input-box h-auto" placeholder="Example: Good English speaking, basic MS Office, love cooking, some event management at college.">{skills_text}</textarea>
+          </div>
+
+          <div>
+            <label class="block text-xs text-slate-300 mb-1">Target roles in hospitality</label>
+            <textarea name="target_roles" rows="3" class="input-box h-auto" placeholder="Example: Front office executive, F&amp;B service, commis chef, cruise jobs.">{target_roles}</textarea>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-4 items-center">
+            <div>
+              <label class="block text-xs text-slate-300 mb-1">Rate your overall readiness (0–5)</label>
+              <input name="self_rating" type="number" min="0" max="5" value="{self_rating}" class="input-box" />
+            </div>
+            <p class="text-[11px] text-slate-400">
+              This is just a self-check. Mentors can adjust this after talking with you.
+            </p>
+          </div>
+
+          <button class="submit-btn mt-2">Save skills</button>
+        </form>
+      </div>
+    """
+
+    rating_panel = f"""
+      <div class="space-y-4">
+        <h2 class="text-2xl md:text-3xl font-bold">Career rating overview 📊</h2>
+        <p class="text-sm text-slate-300">
+          This is a simple snapshot of how ready you feel right now for hospitality education and jobs.
+        </p>
+
+        <div class="mt-4 bg-slate-900/70 border border-slate-700 rounded-2xl p-4 space-y-3">
+          <p class="text-xs text-slate-400">Self-rating (0–5)</p>
+          <div class="flex items-center gap-3">
+            <div class="flex gap-1">
+              {''.join('<span>⭐</span>' for _ in range(self_rating))}
+              {''.join('<span class="text-slate-600">⭐</span>' for _ in range(5 - self_rating))}
+            </div>
+            <span class="text-sm text-slate-200">{self_rating}/5</span>
+          </div>
+          <p class="text-xs text-slate-400 mt-2">
+            Tip: If your rating is below 3, focus on English, grooming and basic communication.
+            If 3 or above, start short internships, hotel visits and part-time exposure.
+          </p>
+        </div>
+      </div>
+    """
+
+    resume_panel = f"""
+      <div class="space-y-4">
+        <h2 class="text-2xl md:text-3xl font-bold">Resume &amp; profile link 📄</h2>
+        <p class="text-sm text-slate-300">
+          Upload your resume to Google Drive / any cloud, keep it public or shareable, and paste the link here.
+        </p>
+
+        <form method="POST" class="space-y-4 mt-4">
+          <input type="hidden" name="tab" value="resume">
+
+          <div>
+            <label class="block text-xs text-slate-300 mb-1">Resume link (Google Drive / PDF link)</label>
+            <input name="resume_link" class="input-box" placeholder="https://drive.google.com/..." value="{resume_link}">
+          </div>
+
+          <div>
+            <label class="block text-xs text-slate-300 mb-1">Notes for mentor (optional)</label>
+            <textarea name="notes" rows="3" class="input-box h-auto" placeholder="Anything important mentors should know about your situation, gaps, or goals.">{notes}</textarea>
+          </div>
+
+          <button class="submit-btn mt-2">Save resume details</button>
+        </form>
+
+        {"<p class='text-xs text-emerald-300 mt-2'>Current resume link: <a href='" + resume_link + "' target='_blank' class='underline'>" + resume_link + "</a></p>" if resume_link else ""}
+      </div>
+    """
+
+    faqs_panel = """
+      <div class="space-y-4">
+        <h2 class="text-2xl md:text-3xl font-bold">FAQs ❓</h2>
+        <div class="space-y-3 text-sm text-slate-200">
+          <div>
+            <p class="font-semibold">1. Is ₹299 / year a real payment?</p>
+            <p class="text-slate-300 text-xs">
+              Right now this is a prototype. The amount is shown as a sample subscription and payment is not live yet.
+            </p>
+          </div>
+          <div>
+            <p class="font-semibold">2. Are these college details 100% official?</p>
+            <p class="text-slate-300 text-xs">
+              No. Fees, ratings and packages here are approximate guidance for hospitality planning.
+              Always confirm directly with each college before applying.
+            </p>
+          </div>
+          <div>
+            <p class="font-semibold">3. Will mentors guarantee a job?</p>
+            <p class="text-slate-300 text-xs">
+              No one can guarantee a job. Mentors help with clarity, profile building and connecting you
+              to better opportunities and preparation.
+            </p>
+          </div>
+          <div>
+            <p class="font-semibold">4. Can I use the AI bot multiple times?</p>
+            <p class="text-slate-300 text-xs">
+              Right now, each account gets <b>one</b> free AI career chat session.
+              After that you’ll need to upgrade to a paid plan once it is live.
+            </p>
+          </div>
+        </div>
+      </div>
+    """
+
+    about_panel = """
+      <div class="space-y-4">
+        <h2 class="text-2xl md:text-3xl font-bold">About CareerInn 🏨</h2>
+        <p class="text-sm text-slate-300">
+          CareerInn is built for students who are serious about hospitality and hotel careers,
+          but feel lost between colleges, agents and random advice.
+        </p>
+
+        <div class="grid md:grid-cols-2 gap-4 mt-3">
+          <div class="support-box">
+            <h3 class="font-semibold mb-2">What we want to solve</h3>
+            <ul class="text-xs md:text-sm text-slate-200 space-y-1.5">
+              <li>• Confusion about which hotel management college to choose.</li>
+              <li>• No clear view of fees, packages and recruiters.</li>
+              <li>• Lack of honest guidance on real hotel work life.</li>
+              <li>• Random decisions about abroad and internships.</li>
+            </ul>
+          </div>
+          <div class="support-box">
+            <h3 class="font-semibold mb-2">What this dashboard gives you</h3>
+            <ul class="text-xs md:text-sm text-slate-200 space-y-1.5">
+              <li>• One place to track your skills and goals.</li>
+              <li>• A simple resume link that mentors can review.</li>
+              <li>• AI plus human guidance for hospitality planning.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    """
+
+    if tab == "home":
+        panel_html = home_panel
+    elif tab == "mentors":
+        panel_html = mentors_panel
+    elif tab == "skills":
+        panel_html = skills_panel
+    elif tab == "rating":
+        panel_html = rating_panel
+    elif tab == "resume":
+        panel_html = resume_panel
+    elif tab == "faqs":
+        panel_html = faqs_panel
+    else:
+        panel_html = about_panel
+
     content = f"""
-    <h2 class="text-3xl font-bold mb-2">Welcome {session['user']} 👋</h2>
-    <p class="text-gray-300 mb-6 text-sm">
-      Subscription: <span class="text-emerald-300 font-semibold">₹299 / year</span> (demo data only ...)
-    </p>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
-      <div class="dash-box">Students<br><span>...</span></div>
-      <div class="dash-box">Colleges<br><span>...</span></div>
-      <div class="dash-box">Mentors<br><span>...</span></div>
-      <div class="dash-box">Jobs<br><span>...</span></div>
-      <div class="dash-box">Abroad Programs<br><span>...</span></div>
-      <div class="dash-box">Avg. Package<br><span>...</span></div>
+    <div class="max-w-6xl mx-auto space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p class="text-xs text-slate-400">Profile · Hotel &amp; Hospitality</p>
+          <h1 class="text-2xl md:text-3xl font-bold">Student Dashboard</h1>
+        </div>
+      </div>
+
+      <!-- DASHBOARD TABS -->
+      <div class="flex flex-wrap gap-2 mt-2">
+        <a href="/dashboard?tab=home" class="{cls('home')}">Home</a>
+        <a href="/dashboard?tab=mentors" class="{cls('mentors')}">Mentors</a>
+        <a href="/dashboard?tab=skills" class="{cls('skills')}">Skills</a>
+        <a href="/dashboard?tab=rating" class="{cls('rating')}">Rating</a>
+        <a href="/dashboard?tab=resume" class="{cls('resume')}">Resume</a>
+        <a href="/dashboard?tab=faqs" class="{cls('faqs')}">FAQs</a>
+        <a href="/dashboard?tab=about" class="{cls('about')}">About us</a>
+      </div>
+
+      <div class="mt-4 bg-slate-900/70 border border-slate-800 rounded-2xl p-5 md:p-6">
+        {panel_html}
+      </div>
     </div>
     """
     return render_page(content, "Dashboard")
@@ -899,14 +1223,14 @@ def chatbot():
     if not user_id:
         return redirect("/login")
 
-    # Fetch DB usage record
     db = get_db()
     usage = db.query(AiUsage).filter_by(user_id=user_id).first()
-    locked = bool(usage and usage.ai_used == 1)  # only lock AFTER finished
+    locked = bool(usage and usage.ai_used == 1)
 
     # Reset chat but should NOT reset free usage
     if request.args.get("reset") == "1":
         session["ai_history"] = []
+        db.close()
         return redirect("/chatbot")
 
     # Load history
@@ -915,40 +1239,51 @@ def chatbot():
         history = []
     session["ai_history"] = history
 
-    # -------- CHAT POST ---------
     if request.method == "POST":
-        # If session already consumed → block AI fully
         if locked:
-            history.append({"role": "assistant", "content":
-                "⚠ Your free chat session has ended.\n"
-                "Buy Student Pass ₹299/year to continue chatting."
+            history.append({
+                "role": "assistant",
+                "content": (
+                    "⚠ Your free AI career chat session has ended.\n"
+                    "Please check the Student Pass (₹299/year) on the home page and talk to mentors for more guidance."
+                ),
             })
             session["ai_history"] = history
             db.close()
-            return render_page(render_template_string(CHATBOT_HTML, history=history, locked=True))
+            html = render_template_string(CHATBOT_HTML, history=history, locked=True)
+            return render_page(html, "CareerInn AI Mentor")
 
-        user_msg = request.form.get("message","").strip()
+        user_msg = request.form.get("message", "").strip()
         if user_msg:
             history.append({"role": "user", "content": user_msg})
 
-            # Send prompt to AI
-            groq = get_groq_client()
             messages = [{"role": "system", "content": AI_SYSTEM_PROMPT}] + history
+            groq_client = get_groq_client()
 
-            try:
-                reply = groq.chat.completions.create(
-                    model="llama-3.1-8b-instant",
-                    messages=messages,
-                    temperature=0.7,
-                ).choices[0].message.content
-            except Exception as e:
-                reply = f"AI error: {e}"
+            if groq_client is None:
+                reply = (
+                    "AI is not configured yet. Please ask the admin to set GROQ_API_KEY "
+                    "in the server environment."
+                )
+            else:
+                try:
+                    resp = groq_client.chat.completions.create(
+                        model="llama-3.1-8b-instant",
+                        messages=messages,
+                        temperature=0.7,
+                    )
+                    reply = resp.choices[0].message.content
+                except Exception as e:
+                    reply = f"AI error: {e}"
 
             history.append({"role": "assistant", "content": reply})
             session["ai_history"] = history
 
     db.close()
-    return render_page(render_template_string(CHATBOT_HTML, history=history, locked=locked))
+    html = render_template_string(CHATBOT_HTML, history=history, locked=locked)
+    return render_page(html, "CareerInn AI Mentor")
+
+
 @app.route("/finish")
 def finish():
     user_id = session.get("user_id")
@@ -958,7 +1293,6 @@ def finish():
     db = get_db()
     usage = db.query(AiUsage).filter_by(user_id=user_id).first()
 
-    # Use up the free session only when user ends by pressing button
     if usage is None:
         usage = AiUsage(user_id=user_id, ai_used=1)
         db.add(usage)
@@ -967,13 +1301,12 @@ def finish():
 
     db.commit()
     db.close()
-
     return redirect("/chatbot")
 
-# -------------------- END & LOCK CHAT (POST) --------------------
+
+# -------------------- END & LOCK CHAT (POST BUTTON) --------------------
 @app.route("/chatbot/end", methods=["POST"])
 def end_chatbot():
-    # must be logged in
     user_id = session.get("user_id")
     if not user_id:
         return redirect("/login")
@@ -990,11 +1323,8 @@ def end_chatbot():
     finally:
         db.close()
 
-    # clear this session’s chat + mark as used
     session["ai_history"] = []
     session["ai_used"] = True
-
-    # back to chatbot, now in locked state
     return redirect("/chatbot")
 
 
