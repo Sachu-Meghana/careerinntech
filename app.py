@@ -15,10 +15,9 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session
-
-# -------------------- FLASK + OPENAI SETUP --------------------
 from groq import Groq
 
+# -------------------- FLASK + GROQ SETUP --------------------
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "careerinn_secure_key")
 
@@ -29,7 +28,6 @@ def get_groq_client():
     if not api_key:
         return None
     return Groq(api_key=api_key)
-
 
 
 # -------------------- DB SETUP (POSTGRES / SQLITE) --------------------
@@ -275,6 +273,7 @@ BASE_HTML = """
 def render_page(content_html, title="CareerInn"):
     return render_template_string(BASE_HTML, content=content_html, title=title)
 
+
 # -------------------- HOME (dynamic CTA) --------------------
 @app.route("/")
 def home():
@@ -293,7 +292,7 @@ def home():
         """
     else:
         cta_html = """
-          <div class="flex flex-wrap	items-center gap-4 mt-3">
+          <div class="flex flex-wrap items-center gap-4 mt-3">
             <a href="/signup" class="primary-cta">
               🚀 Get started – ₹299 / year
             </a>
@@ -513,13 +512,10 @@ def login():
 
         if user:
             session["user"] = user.name
-
-    # reset AI state for this logged-in user
+            # reset AI state for this logged-in user
             session["ai_history"] = []
             session["ai_used"] = False
-
             return redirect("/")  # go to HOME after login
-
         else:
             return render_page(
                 "<p class='text-red-400 text-sm mb-3'>Invalid email or password.</p>" + LOGIN_FORM,
@@ -533,6 +529,7 @@ def login():
 def logout():
     session.clear()
     return redirect("/")
+
 
 # -------------------- DASHBOARD --------------------
 @app.route("/dashboard")
@@ -555,6 +552,7 @@ def dashboard():
     </div>
     """
     return render_page(content, "Dashboard")
+
 
 # -------------------- COURSES (budget + rating filters) --------------------
 @app.route("/courses")
@@ -649,6 +647,7 @@ def courses():
     """
     return render_page(content, "Courses & Colleges")
 
+
 # -------------------- MENTORSHIP --------------------
 @app.route("/mentorship")
 def mentorship():
@@ -711,6 +710,7 @@ def book_mentor(mentor_id):
     </form>
     """
     return render_page(content, "Book Mentor")
+
 
 # -------------------- JOBS = PLACEMENTS SNAPSHOT --------------------
 @app.route("/jobs")
@@ -775,18 +775,25 @@ def chatbot():
             for m in history:
                 messages.append({"role": m["role"], "content": m["content"]})
 
-            try:
-                response = client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
-                    messages=messages,
-                    temperature=0.6,
-                )
-                bot_reply = response.choices[0].message.content
-            except Exception as e:
+            groq_client = get_groq_client()
+            if groq_client is None:
                 bot_reply = (
-                    "Sorry, I couldn't reach the AI service right now. "
-                    f"Technical info: {e}"
+                    "AI is not configured yet. Please ask the admin to set GROQ_API_KEY "
+                    "in the server environment."
                 )
+            else:
+                try:
+                    response = groq_client.chat.completions.create(
+                        model="llama-3.1-8b-instant",
+                        messages=messages,
+                        temperature=0.6,
+                    )
+                    bot_reply = response.choices[0].message.content
+                except Exception as e:
+                    bot_reply = (
+                        "Sorry, I couldn't reach the AI service right now. "
+                        f"Technical info: {e}"
+                    )
 
             history.append({"role": "assistant", "content": bot_reply})
             session["ai_history"] = history
@@ -808,6 +815,7 @@ def support():
     </div>
     """
     return render_page(content, "Support")
+
 
 # -------------------- MAIN --------------------
 if __name__ == "__main__":
