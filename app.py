@@ -478,24 +478,37 @@ CHATBOT_HTML = """
     {% endif %}
   </div>
 
-  {% if not locked %}
-  <form method="POST" class="flex gap-2">
-    <input
-      name="message"
-      autocomplete="off"
-      placeholder="Type your message here..."
-      class="flex-1 input-box"
-      required
-    >
-    <button class="px-4 py-2 rounded-full bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold">
-      Send
-    </button>
-  </form>
-  {% else %}
-  <p class="text-xs text-slate-400">
-    Tip: Go back to the home page to see the Student Pass details and connect with mentors.
-  </p>
-  {% endif %}
+ {% if not locked %}
+<form method="POST" class="flex gap-2">
+  <input
+    name="message"
+    autocomplete="off"
+    placeholder="Type your message here..."
+    class="flex-1 input-box"
+    required
+  >
+  <button class="px-4 py-2 rounded-full bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold">
+    Send
+  </button>
+</form>
+
+<!-- 🔥 Button that officially ends the free session -->
+<form method="POST" action="/finish" class="mt-3">
+  <button class="px-4 py-2 bg-rose-500 hover:bg-rose-600 rounded-full text-sm font-bold">
+    🔒 End Session & Lock Free Chat
+  </button>
+</form>
+
+{% else %}
+<div class="mt-4 p-3 bg-slate-800 rounded-xl text-sm text-slate-200">
+  Your free career guidance session has ended.  
+  To continue receiving personalised AI and mentor support,
+  please purchase the <b>₹299/year CareerInn Student Pass.</b><br><br>
+  👉 Visit <a href="/" class="text-indigo-400 underline">Home Page</a> for subscription options.<br>
+  👉 You can still browse colleges, courses & jobs.
+</div>
+{% endif %}
+
 </div>
 """
 
@@ -862,80 +875,81 @@ def global_match():
 # -------------------- AI CAREER BOT (ONE FREE CHAT / USER) --------------------
 @app.route("/chatbot", methods=["GET", "POST"])
 def chatbot():
-    # Must login
+    # Login required
     user_id = session.get("user_id")
     if not user_id:
         return redirect("/login")
 
-    # Reset conversation but DO NOT reset free usage
+    # Fetch DB usage record
+    db = get_db()
+    usage = db.query(AiUsage).filter_by(user_id=user_id).first()
+    locked = bool(usage and usage.ai_used == 1)  # only lock AFTER finished
+
+    # Reset chat but should NOT reset free usage
     if request.args.get("reset") == "1":
         session["ai_history"] = []
         return redirect("/chatbot")
 
-    # Convert old history to proper dict format
-    raw_history = session.get("ai_history", [])
-    history = []
-    for m in raw_history:
-        if isinstance(m, dict):
-            history.append(m)
-        elif isinstance(m, (list, tuple)) and len(m) == 2:
-            history.append({"role": m[0], "content": m[1]})
-
+    # Load history
+    history = session.get("ai_history", [])
+    if not isinstance(history, list):
+        history = []
     session["ai_history"] = history
 
-    # Check DB usage state
-    db = get_db()
-    usage = db.query(AiUsage).filter_by(user_id=user_id).first()
-    locked = bool(usage and usage.ai_used == 1)  # only lock AFTER session finished
-
-    # ❗ DO NOT LOCK ON FIRST MESSAGE — wait until final guidance given
-
+    # -------- CHAT POST ---------
     if request.method == "POST":
-        user_message = request.form.get("message", "").strip()
-
-        # If free chance consumed — block AI response
+        # If session already consumed → block AI fully
         if locked:
-            history.append({
-                "role": "assistant",
-                "content": "❗ Your free AI session is completed.\nPlease buy ₹299/year Student Pass to continue."
+            history.append({"role": "assistant", "content":
+                "⚠ Your free chat session has ended.\n"
+                "Buy Student Pass ₹299/year to continue chatting."
             })
             session["ai_history"] = history
             db.close()
             return render_page(render_template_string(CHATBOT_HTML, history=history, locked=True))
 
-        # Allow AI chat for the first full session
-        history.append({"role": "user", "content": user_message})
+        user_msg = request.form.get("message","").strip()
+        if user_msg:
+            history.append({"role": "user", "content": user_msg})
 
-        # Build message list for AI
-        messages = [{"role": "system", "content": AI_SYSTEM_PROMPT}] + history
+            # Send prompt to AI
+            groq = get_groq_client()
+            messages = [{"role": "system", "content": AI_SYSTEM_PROMPT}] + history
 
-        groq = get_groq_client()
-        try:
-            response = groq.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=messages,
-                temperature=0.7
-            )
-            bot_reply = response.choices[0].message.content
-        except Exception as e:
-            bot_reply = f"AI Error: {e}"
+            try:
+                reply = groq.chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    messages=messages,
+                    temperature=0.7,
+                ).choices[0].message.content
+            except Exception as e:
+                reply = f"AI error: {e}"
 
-        history.append({"role": "assistant", "content": bot_reply})
-        session["ai_history"] = history
-
-        # 🔥 Mark FREE CHAT CONSUMED ONLY IF AI FINISHES GUIDANCE
-        if ("mentor" in bot_reply.lower() or "connect" in bot_reply.lower()):
-            if usage is None:
-                usage = AiUsage(user_id=user_id, ai_used=1)
-                db.add(usage)
-            else:
-                usage.ai_used = 1
-            db.commit()
-            locked = True
+            history.append({"role": "assistant", "content": reply})
+            session["ai_history"] = history
 
     db.close()
     return render_page(render_template_string(CHATBOT_HTML, history=history, locked=locked))
+@app.route("/finish")
+def finish():
+    user_id = session.get("user_id")
+    if not user_id:
+        return redirect("/login")
 
+    db = get_db()
+    usage = db.query(AiUsage).filter_by(user_id=user_id).first()
+
+    # Use up the free session only when user ends by pressing button
+    if usage is None:
+        usage = AiUsage(user_id=user_id, ai_used=1)
+        db.add(usage)
+    else:
+        usage.ai_used = 1
+
+    db.commit()
+    db.close()
+
+    return redirect("/chatbot")
 
 # -------------------- SUPPORT --------------------
 @app.route("/support")
