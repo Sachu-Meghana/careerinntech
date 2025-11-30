@@ -862,92 +862,79 @@ def global_match():
 # -------------------- AI CAREER BOT (ONE FREE CHAT / USER) --------------------
 @app.route("/chatbot", methods=["GET", "POST"])
 def chatbot():
-    # Require login for AI chat
+    # Must login
     user_id = session.get("user_id")
     if not user_id:
-        # Not logged in, send to login page
         return redirect("/login")
 
-    # If reset requested (new student), clear history in-session only
+    # Reset conversation but DO NOT reset free usage
     if request.args.get("reset") == "1":
         session["ai_history"] = []
         return redirect("/chatbot")
 
-    # ---- normalize old history (tuples) into dicts ----
+    # Convert old history to proper dict format
     raw_history = session.get("ai_history", [])
     history = []
     for m in raw_history:
-        if isinstance(m, dict) and "role" in m and "content" in m:
-            history.append({"role": m["role"], "content": m["content"]})
+        if isinstance(m, dict):
+            history.append(m)
         elif isinstance(m, (list, tuple)) and len(m) == 2:
-            role, content = m
-            history.append({"role": str(role), "content": str(content)})
-    session["ai_history"] = history  # save cleaned history
+            history.append({"role": m[0], "content": m[1]})
 
-    # ---- read / create usage row ----
+    session["ai_history"] = history
+
+    # Check DB usage state
     db = get_db()
     usage = db.query(AiUsage).filter_by(user_id=user_id).first()
-    locked = bool(usage and usage.ai_used >= 1)
+    locked = bool(usage and usage.ai_used == 1)  # only lock AFTER session finished
+
+    # ❗ DO NOT LOCK ON FIRST MESSAGE — wait until final guidance given
 
     if request.method == "POST":
         user_message = request.form.get("message", "").strip()
-        if user_message:
-            if locked:
-                # Already used free chat – do NOT call AI again
-                history.append({
-                    "role": "assistant",
-                    "content": (
-                        "You have already used your one free AI career chat. "
-                        "Please purchase the ₹299/year Student Pass on the home page "
-                        "to continue getting personalised AI and mentor guidance."
-                    ),
-                })
-            else:
-                # First time free chat
-                history.append({"role": "user", "content": user_message})
 
-                messages = [{"role": "system", "content": AI_SYSTEM_PROMPT}]
-                for m in history:
-                    messages.append({"role": m["role"], "content": m["content"]})
-
-                groq_client = get_groq_client()
-                if groq_client is None:
-                    bot_reply = (
-                        "AI is not configured yet. Please ask the admin to set GROQ_API_KEY "
-                        "in the server environment."
-                    )
-                else:
-                    try:
-                        response = groq_client.chat.completions.create(
-                            model="llama-3.1-8b-instant",
-                            messages=messages,
-                            temperature=0.6,
-                        )
-                        bot_reply = response.choices[0].message.content
-                    except Exception as e:
-                        bot_reply = (
-                            "Sorry, I couldn't reach the AI service right now. "
-                            f"Technical info: {e}"
-                        )
-
-                history.append({"role": "assistant", "content": bot_reply})
-
-                # Mark this user's free chat as used
-                if usage is None:
-                    usage = AiUsage(user_id=user_id, ai_used=1)
-                    db.add(usage)
-                else:
-                    usage.ai_used = 1
-                db.commit()
-                locked = True
-                session["ai_used"] = True
-
+        # If free chance consumed — block AI response
+        if locked:
+            history.append({
+                "role": "assistant",
+                "content": "❗ Your free AI session is completed.\nPlease buy ₹299/year Student Pass to continue."
+            })
             session["ai_history"] = history
+            db.close()
+            return render_page(render_template_string(CHATBOT_HTML, history=history, locked=True))
+
+        # Allow AI chat for the first full session
+        history.append({"role": "user", "content": user_message})
+
+        # Build message list for AI
+        messages = [{"role": "system", "content": AI_SYSTEM_PROMPT}] + history
+
+        groq = get_groq_client()
+        try:
+            response = groq.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=messages,
+                temperature=0.7
+            )
+            bot_reply = response.choices[0].message.content
+        except Exception as e:
+            bot_reply = f"AI Error: {e}"
+
+        history.append({"role": "assistant", "content": bot_reply})
+        session["ai_history"] = history
+
+        # 🔥 Mark FREE CHAT CONSUMED ONLY IF AI FINISHES GUIDANCE
+        if ("mentor" in bot_reply.lower() or "connect" in bot_reply.lower()):
+            if usage is None:
+                usage = AiUsage(user_id=user_id, ai_used=1)
+                db.add(usage)
+            else:
+                usage.ai_used = 1
+            db.commit()
+            locked = True
 
     db.close()
-
-    html = render_template_string(CHATBOT_HTML, history=history, locked=locked)
-    return render_page(html, "CareerInn AI Mentor")
+    return render_page(render_template_string(CHATBOT_HTML, history=history, locked=locked))
 
 
 # -------------------- SUPPORT --------------------
