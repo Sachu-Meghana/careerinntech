@@ -341,6 +341,7 @@ def home():
     ai_used = False
     user_id = session.get("user_id")
     logged_in = bool(user_id)
+    subscribed = user_is_subscribed(user_id) if logged_in else False
 
     if user_id:
         db = get_db()
@@ -394,6 +395,27 @@ def home():
           </p>
         """
 
+    # Build feature cards including Skills, Mock Interviews and Prev Papers
+    # Determine links based on login/subscription
+    def link_for_skills():
+        if not logged_in:
+            return "/login"
+        if subscribed:
+            return "/dashboard?tab=skills"
+        return "/subscribe"
+
+    def link_for_mock():
+        if not logged_in:
+            return "/login"
+        if subscribed:
+            return "/mock-interviews"
+        return "/subscribe"
+
+    skills_link = link_for_skills()
+    mock_link = link_for_mock()
+    prev_link = "/prev-papers"
+
+    # Card HTML builder (keeps style same as feature-card)
     content = f"""
     <div class="max-w-5xl mx-auto mt-6 md:mt-10 space-y-12 hero-shell">
       <section class="grid md:grid-cols-2 gap-10 items-center">
@@ -414,8 +436,11 @@ def home():
           <p class="text-[13px] md:text-sm text-slate-300">Students can explore hospitality careers, compare colleges, and get mentor &amp; AI guidance in one simple space.</p>
         </div>
       </section>
+
       <section class="space-y-4">
         <h3 class="text-sm font-semibold text-slate-200">CareerInn Spaces:</h3>
+
+        <!-- Feature grid now includes the original 6 + Skills, Mock Interviews, Previous Papers -->
         <div class="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
           <a href="/courses" class="feature-card">📘 Courses<p class="sub">See key hospitality courses.</p></a>
           <a href="/colleges" class="feature-card">🏫 Colleges<p class="sub">Hyderabad hotel-management colleges.</p></a>
@@ -423,6 +448,11 @@ def home():
           <a href="/jobs" class="feature-card">💼 Jobs &amp; Placements<p class="sub">Avg packages &amp; recruiters snapshot.</p></a>
           <a href="/global-match" class="feature-card">🌍 Global Match<p class="sub">Abroad colleges &amp; internships overview.</p></a>
           <a href="/chatbot" class="feature-card">🤖 AI Career Bot<p class="sub">Chat to get a suggested path.</p></a>
+
+          <!-- New cards added on HOME -->
+          <a href="{skills_link}" class="feature-card">🛠️ Skills<p class="sub">Important hospitality skills &amp; quick tips{("" if subscribed else " (subscribe to edit)")}.</p></a>
+          <a href="{mock_link}" class="feature-card">🎤 Mock Interviews<p class="sub">Practice interviews &amp; AI mock-interviewer{("" if subscribed else " (subscribe to use)")}.</p></a>
+          <a href="{prev_link}" class="feature-card">📚 Question Papers<p class="sub">Previous year papers — upload &amp; download PDFs.</p></a>
         </div>
       </section>
     </div>
@@ -463,7 +493,7 @@ CHATBOT_HTML = """
     </form>
     <form method="POST" action="/chatbot/end" class="mt-3"><button class="px-3 py-1.5 text-[11px] rounded-full border border-rose-500/70 text-rose-200 hover:bg-rose-500/10">🔒 End &amp; lock free AI chat</button></form>
   {% else %}
-    <p class="text-xs text-slate-400 mt-2">Tip: Go back to the Home page to see the Student Pass and connect with mentors.</p>
+    <p class="text-xs text-slate-400 mt-2">Tip: Go back to the Home page to see the Student Pass and connect with mentors for more help.</p>
   {% endif %}
 </div>
 """
