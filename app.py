@@ -257,7 +257,7 @@ BASE_HTML = """
       <img src="/static/logo.png" class="w-10 h-10 object-contain" alt="logo">
     </div>
     <div>
-      <div class="logo-txt">CareerInn-Tech</div>
+      <div class="logo-txt">CareerInnTech</div>
       <div class="text-xs text-slate-400">BTech • Hospitality • Careers</div>
     </div>
   </div>
@@ -315,7 +315,7 @@ BASE_HTML = """
 </html>
 """
 
-def render_page(content_html, title="CareerInn-Tech"):
+def render_page(content_html, title="CareerInnTech"):
     return render_template_string(BASE_HTML, content=content_html, title=title)
 
 # -------------------- helpers --------------------
