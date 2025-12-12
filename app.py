@@ -170,7 +170,6 @@ def init_db():
             ("Trinity College of Hotel Management", "Kukatpally, Hyderabad", 100000, "Hotel Management Courses", 4.0, "hospitality"),
             ("Chennais Amirta International Institute of Hotel Management (CAIIHM)", "Ameerpet, Hyderabad",150000, "Hotel Management Programs", 4.2, "hospitality"),
             ("Leo Academy of Hospitality & Hotel Management", "Secunderabad, Hyderabad", 90000, "Hotel Management", 3.9, "hospitality")
-]
             
             # BTech
             ("JNTU Hyderabad", "Kukatpally, Hyderabad", 90000, "B.Tech CSE / ECE", 4.1, "btech"),
