@@ -204,7 +204,13 @@ def init_db():
 
             
         ]
-        for name, loc, fees, course, rating, track in colleges_seed:
+        for item in colleges_seed:
+            if len(item) == 6:
+                name, loc, fees, course, rating, track = item
+                cutoff = None
+            else:
+                name, loc, fees, course, rating, track, cutoff = item
+        
             db.add(
                 College(
                     name=name,
@@ -216,6 +222,7 @@ def init_db():
                     eamcet_cutoff=cutoff
                 )
             )
+
     # Seed skills (BTech + Hospitality)
     if db.query(Skill).count() == 0:
         skills_seed = [
@@ -582,24 +589,7 @@ def courses():
 
     return render_page(content, "Courses")
 
-    # show courses for selected track
-    db = get_db()
-    data = db.query(Course).filter_by(track=track).all()
-    skills = db.query(Skill).filter_by(track=track).all()
-
-    db.close()
-    cards = ""
-    for c in data:
-        video = f"<a href='{c.video_link}' target='_blank' class='text-indigo-300 underline text-sm'>Watch video</a>" if c.video_link else ""
-        cards += f"<div class='support-box mb-3'><h3 class='font-semibold'>{c.title}</h3><p class='text-sm text-slate-300'>{c.description or ''}</p><div class='mt-2'>{video}</div></div>"
-    content = f"""
-    <div class="max-w-4xl mx-auto">
-      <h2 class="text-2xl font-bold mb-2">Courses - {'BTech' if track=='btech' else 'Hospitality'}</h2>
-      <div class="grid md:grid-cols-2 gap-4">{cards}</div>
-      <div class="mt-4"><a href='/' class='px-3 py-1 rounded bg-indigo-600'>Back</a></div>
-    </div>
-    """
-    return render_page(content, "Courses")
+   
 
 # -------------------- COLLEGES --------------------
 @app.route("/colleges")
@@ -634,7 +624,7 @@ def colleges():
         except ValueError:
             pass
     if track == "btech" and eamcet_rank.isdigit():
-    query = query.filter(College.eamcet_cutoff >= int(eamcet_rank))
+        query = query.filter(College.eamcet_cutoff >= int(eamcet_rank))
 
     data = query.order_by(College.rating.desc()).all()
     db.close()
