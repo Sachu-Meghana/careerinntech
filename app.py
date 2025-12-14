@@ -85,6 +85,8 @@ class College(Base):
     course = Column(String(255), nullable=False)
     rating = Column(Float, nullable=False)
     track = Column(String(50), nullable=False)  # 'btech' or 'hospitality'
+    eamcet_cutoff = Column(Integer, nullable=True)
+
 
 class Mentor(Base):
     __tablename__ = "mentors"
@@ -117,6 +119,8 @@ class UserProfile(Base):
     self_rating = Column(Integer, nullable=False, default=0)
     resume_link = Column(String(500), nullable=True)
     notes = Column(Text, nullable=True)
+    onboarded = Column(Boolean, default=False)
+
 
 class Subscription(Base):
     __tablename__ = "subscriptions"
@@ -140,6 +144,15 @@ class PrevPaper(Base):
     link = Column(String(1000), nullable=True)
     uploader_id = Column(Integer, nullable=True)
     is_upload = Column(Boolean, nullable=False, default=False)
+
+class Skill(Base):
+    __tablename__ = "skills"
+    id = Column(Integer, primary_key=True)
+    track = Column(String(50), nullable=False)      # btech / hospitality
+    category = Column(String(100), nullable=False)  # branch or area
+    name = Column(String(200), nullable=False)
+    video_link = Column(String(500), nullable=True)
+
 
 # -------------------- DB INIT & SEED --------------------
 def get_db():
@@ -178,30 +191,66 @@ def init_db():
             ("Leo Academy of Hospitality & Hotel Management", "Secunderabad, Hyderabad", 90000, "Hotel Management", 3.9, "hospitality"),
             
             # BTech
-            ("JNTU Hyderabad", "Kukatpally, Hyderabad", 90000, "B.Tech CSE / ECE", 4.1, "btech"),
-            ("Osmania University - Engineering", "Hyderabad", 80000, "B.Tech All Branches", 4.0, "btech"),
-            ("VNR Vignana Jyothi", "Ghatkesar, Hyderabad", 150000, "B.Tech CSE", 4.2, "btech"),
-            ("IIIT Hyderabad", "Gachibowli, Hyderabad", 300000, "B.Tech CSE", 4.8, "btech"),
-            ("CBIT - Chaitanya Bharathi Institute of Technology", "Gandipet, Hyderabad", 160000, "B.Tech CSE / ECE / EEE / MECH", 4.3, "btech"),
-            ("Vasavi College of Engineering", "Ibrahimbagh, Hyderabad", 140000, "B.Tech CSE / IT / ECE", 4.4, "btech"),
-            ("MVSR Engineering College", "Nadergul, Hyderabad", 120000, "B.Tech All Branches", 4.1, "btech"),
-            ("G. Narayanamma Institute of Technology (GNIT)", "Shaikpet, Hyderabad", 150000, "B.Tech CSE / ECE / IT", 4.2, "btech"),
-            ("BITS Pilani - Hyderabad Campus", "Shamirpet, Hyderabad", 550000, "B.E CSE / ECE / MECH / CHEM", 4.7, "btech"),
-            ("BVRIT Narsapur", "Narsapur, Hyderabad", 180000, "B.Tech CSE / ECE / EEE / IT", 4.3, "btech"),
-            ("Vardhaman College of Engineering", "Shamshabad, Hyderabad", 130000, "B.Tech CSE / ECE / IT", 4.3, "btech"),
-            ("Malla Reddy Engineering College", "Maisammaguda, Hyderabad", 110000, "B.Tech All Branches", 4.0, "btech"),
-            ("Guru Nanak Institutions (GNI)", "Ibrahimpatnam, Hyderabad", 90000, "B.Tech All Branches", 4.0, "btech"),
-            ("Anurag University", "Ghatkesar, Hyderabad", 150000, "B.Tech CSE / ECE / AI & DS", 4.2, "btech"),
-            ("KMIT - Keshav Memorial Institute of Technology", "Narayanguda, Hyderabad", 200000, "B.Tech CSE / IT", 4.5, "btech"),
-            ("Mahindra University (MU)", "Bahadurpally, Hyderabad", 350000, "B.Tech CSE / AI / ECE", 4.6, "btech"),
-            ("CMR College of Engineering & Technology", "Kandlakoya, Hyderabad", 120000, "B.Tech CSE / IT / ECE", 4.1, "btech"),
-            ("Sreenidhi Institute of Science and Technology (SNIST)", "Ghatkesar, Hyderabad", 150000, "B.Tech CSE / ECE", 4.2, "btech"),
-            ("JNTUH College of Engineering Sultanpur", "Sultanpur, Hyderabad", 60000, "B.Tech All Branches", 4.1, "btech"),
-            ("MLR Institute of Technology (MLRIT)", "Dundigal, Hyderabad", 130000, "B.Tech CSE / ECE", 4.1, "btech")
+           # BTech (with realistic EAMCET cutoffs)
+            ("JNTU Hyderabad", "Kukatpally, Hyderabad", 90000, "B.Tech CSE / ECE", 4.1, "btech", 5000),
+            ("Osmania University - Engineering", "Hyderabad", 80000, "B.Tech All Branches", 4.0, "btech", 9000),
+            ("CBIT - Chaitanya Bharathi Institute of Technology", "Gandipet, Hyderabad", 160000, "B.Tech CSE / ECE / EEE / MECH", 4.3, "btech", 12000),
+            ("VNR Vignana Jyothi", "Ghatkesar, Hyderabad", 150000, "B.Tech CSE", 4.2, "btech", 15000),
+            ("Vasavi College of Engineering", "Ibrahimbagh, Hyderabad", 140000, "B.Tech CSE / IT / ECE", 4.4, "btech", 18000),
+            ("KMIT - Keshav Memorial Institute of Technology", "Narayanguda, Hyderabad", 200000, "B.Tech CSE / IT", 4.5, "btech", 20000),
+            ("BVRIT Narsapur", "Narsapur, Hyderabad", 180000, "B.Tech CSE / ECE / EEE / IT", 4.3, "btech", 25000),
+            ("SNIST", "Ghatkesar, Hyderabad", 150000, "B.Tech CSE / ECE", 4.2, "btech", 30000),
+            ("MLR Institute of Technology", "Dundigal, Hyderabad", 130000, "B.Tech CSE / ECE", 4.1, "btech", 45000),
+
             
         ]
         for name, loc, fees, course, rating, track in colleges_seed:
-            db.add(College(name=name, location=loc, fees=fees, course=course, rating=rating, track=track))
+            db.add(
+                College(
+                    name=name,
+                    location=loc,
+                    fees=fees,
+                    course=course,
+                    rating=rating,
+                    track=track,
+                    eamcet_cutoff=cutoff
+                )
+            )
+    # Seed skills (BTech + Hospitality)
+    if db.query(Skill).count() == 0:
+        skills_seed = [
+            # -------- BTECH --------
+            ("btech", "CSE", "Python Programming", "/static/skills/python.mp4"),
+            ("btech", "CSE", "Data Structures", "/static/skills/dsa.mp4"),
+            ("btech", "CSE", "DBMS", "/static/skills/dbms.mp4"),
+            ("btech", "CSE", "Operating Systems", "/static/skills/os.mp4"),
+    
+            ("btech", "ECE", "Digital Electronics", "/static/skills/digital.mp4"),
+            ("btech", "ECE", "Microprocessors", "/static/skills/micro.mp4"),
+            ("btech", "ECE", "Embedded C", "/static/skills/embedded.mp4"),
+    
+            ("btech", "MECH", "Thermodynamics", "/static/skills/thermo.mp4"),
+            ("btech", "MECH", "CAD Design", "/static/skills/cad.mp4"),
+    
+            # -------- HOSPITALITY --------
+            ("hospitality", "Front Office", "Guest Handling", "/static/skills/guest.mp4"),
+            ("hospitality", "Front Office", "Hotel PMS", "/static/skills/pms.mp4"),
+    
+            ("hospitality", "Kitchen", "Food Safety & Hygiene", "/static/skills/haccp.mp4"),
+            ("hospitality", "Kitchen", "Continental Cooking", "/static/skills/continental.mp4"),
+        ]
+    
+        for track, category, name, video in skills_seed:
+            db.add(
+                Skill(
+                    track=track,
+                    category=category,
+                    name=name,
+                    video_link=video
+                )
+            )
+
+
 
     # Mentors
     if db.query(Mentor).count() == 0:
@@ -444,10 +493,10 @@ def support():
 # -------------------- COURSES --------------------
 @app.route("/courses", methods=["GET", "POST"])
 def courses():
-    # If track not selected, ask user
     track = request.args.get("track")
+
+    # Step 1: Ask track first
     if not track:
-        # show simple selection UI
         content = """
         <div class="max-w-2xl mx-auto">
           <h2 class="text-2xl font-bold">Choose track</h2>
@@ -459,9 +508,85 @@ def courses():
         </div>
         """
         return render_page(content, "Courses")
+
+    # Step 2: Fetch courses + skills
+    db = get_db()
+    courses_data = db.query(Course).filter_by(track=track).all()
+    skills_data = db.query(Skill).filter_by(track=track).all()
+    db.close()
+
+    # Step 3: Build course cards
+    cards = ""
+    for c in courses_data:
+        video = (
+            f"<a href='{c.video_link}' target='_blank' "
+            f"class='text-indigo-300 underline text-sm'>Watch video</a>"
+            if c.video_link else ""
+        )
+        cards += f"""
+        <div class='support-box mb-3'>
+          <h3 class='font-semibold'>{c.title}</h3>
+          <p class='text-sm text-slate-300'>{c.description or ''}</p>
+          <div class='mt-2'>{video}</div>
+        </div>
+        """
+
+    # Step 4: Group skills (Branch → Skills)
+    from collections import defaultdict
+    skill_map = defaultdict(list)
+
+    for s in skills_data:
+        skill_map[s.category].append(s)
+
+    skills_html = ""
+    for category, items in skill_map.items():
+        skills_html += f"""
+        <div class='support-box mb-5'>
+          <h3 class='font-semibold mb-2'>{category} Skills</h3>
+        """
+        for sk in items:
+            video = (
+                f"<video controls class='w-full mt-2 rounded bg-black'>"
+                f"<source src='{sk.video_link}' type='video/mp4'>"
+                f"</video>"
+                if sk.video_link else ""
+            )
+            skills_html += f"""
+            <div class='mb-3'>
+              <p class='text-sm'>{sk.name}</p>
+              {video}
+            </div>
+            """
+        skills_html += "</div>"
+
+    # Step 5: Final page render
+    content = f"""
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-3">
+        Courses & Skills — {'BTech' if track=='btech' else 'Hospitality'}
+      </h2>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        {cards}
+      </div>
+
+      <div class="mt-6">
+        {skills_html}
+      </div>
+
+      <div class="mt-4">
+        <a href="/" class="px-3 py-1 rounded bg-indigo-600">Back</a>
+      </div>
+    </div>
+    """
+
+    return render_page(content, "Courses")
+
     # show courses for selected track
     db = get_db()
     data = db.query(Course).filter_by(track=track).all()
+    skills = db.query(Skill).filter_by(track=track).all()
+
     db.close()
     cards = ""
     for c in data:
@@ -494,6 +619,8 @@ def colleges():
     # filters retained
     budget = request.args.get("budget", "").strip()
     rating_min = request.args.get("rating", "").strip()
+    eamcet_rank = request.args.get("eamcet_rank", "").strip()
+
     db = get_db()
     query = db.query(College).filter_by(track=track)
     if budget == "lt1": query = query.filter(College.fees < 100000)
@@ -506,6 +633,9 @@ def colleges():
             query = query.filter(College.rating >= rating_val)
         except ValueError:
             pass
+    if track == "btech" and eamcet_rank.isdigit():
+    query = query.filter(College.eamcet_cutoff >= int(eamcet_rank))
+
     data = query.order_by(College.rating.desc()).all()
     db.close()
     rows = ""
@@ -531,6 +661,13 @@ def colleges():
           <option value="3.5">3.5★ & above</option>
           <option value="4.0">4.0★ & above</option>
         </select>
+        <input
+          type="number"
+          name="eamcet_rank"
+          placeholder="EAMCET Rank"
+          class="input-box"
+        />
+
         <button class="px-3 py-2 bg-indigo-600 rounded">Filter</button>
       </form>
       <table class="table"><tr><th>College</th><th>Key Course</th><th>Location</th><th>Fees</th><th>Rating</th></tr>{rows}</table>
@@ -803,6 +940,56 @@ def signup():
         return redirect("/login")
     return render_page(SIGNUP_FORM)
 
+@app.route("/onboarding", methods=["GET", "POST"])
+def onboarding():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+    db = get_db()
+    profile = db.query(UserProfile).filter_by(user_id=user_id).first()
+
+    if request.method == "POST":
+        profile.onboarded = True
+        profile.notes = request.form.get("notes", "").strip()
+        db.commit()
+        db.close()
+        return redirect("/dashboard")
+
+    db.close()
+
+    content = """
+    <div class="max-w-4xl mx-auto space-y-6">
+      <h1 class="text-3xl font-bold">Welcome to CareerInnTech 🎉</h1>
+
+      <!-- Video placeholder -->
+      <div class="bg-black rounded-xl overflow-hidden">
+        <video controls class="w-full h-[320px] bg-black">
+          <source src="/static/onboarding.mp4" type="video/mp4">
+          Your browser does not support video.
+        </video>
+      </div>
+
+      <!-- Student registration form -->
+      <form method="POST" class="bg-slate-900 p-6 rounded-2xl space-y-4">
+        <h2 class="text-xl font-semibold">Student Registration</h2>
+
+        <select name="track" class="input-box">
+          <option value="">Select Track</option>
+          <option value="btech">BTech</option>
+          <option value="hospitality">Hospitality</option>
+        </select>
+
+        <input name="notes" class="input-box"
+          placeholder="Current study, college, goals (eg: BTech CSE 2nd year, aiming for software roles)">
+
+        <button class="submit-btn">Continue to Dashboard</button>
+      </form>
+    </div>
+    """
+
+    return render_page(content, "Onboarding")
+
 @app.route("/login", methods=["GET","POST"])
 def login():
     if request.method == "POST":
@@ -810,21 +997,34 @@ def login():
         password = request.form.get("password","").strip()
         db = get_db()
         user = db.query(User).filter(User.email==email).first()
-        db.close()
         authenticated = False
+
         if user:
             try:
                 authenticated = check_password_hash(user.password, password)
             except Exception:
                 authenticated = (user.password == password)
+
         if authenticated:
             session["user"] = user.name
             session["user_id"] = user.id
             session["ai_history"] = []
             session["first_time_login"] = True
+
+            # ✅ NEW: onboarding check (PATCH)
+            profile = db.query(UserProfile).filter_by(user_id=user.id).first()
+            db.close()
+
+            if profile and not profile.onboarded:
+                return redirect("/onboarding")
+
             return redirect("/dashboard")
+
+        db.close()
         return render_page("<p class='text-red-400'>Invalid credentials.</p>" + LOGIN_FORM)
+
     return render_page(LOGIN_FORM)
+
 
 @app.route("/logout")
 def logout():
